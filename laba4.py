@@ -1,7 +1,8 @@
 import random
 from datetime import timedelta, datetime
 from enum import Enum
-from queue import Queue
+from queue import PriorityQueue
+from dataclasses import dataclass, field
 
 
 class EventStatus(Enum):
@@ -12,9 +13,10 @@ class EventStatus(Enum):
     processed = 'processed'
 
 
+@dataclass(order=True)
 class Event:
     occurrence_time = datetime
-    status = EventStatus
+    status: EventStatus = field(compare=False)
 
 
 """=================================================================================================================="""
@@ -24,28 +26,42 @@ count_handler_get_data = 3
 min_processing_time = 15
 max_processing_time_order_select = 75
 max_processing_time_order_get_data = 150
-rps_select = 350
-rps_get_data = 270
+rps_select = 170
+rps_get_data = 130
 """=================================================================================================================="""
 
 
-def generate_queue(count_first: int, count_second: int) -> Queue:
+def generate_queue(count_first: int, count_second: int) -> PriorityQueue:
     """
     функция генерации очереди событий
     """
-    gen_queue = Queue(count_first + count_second)
+    gen_queue = PriorityQueue(count_first + count_second)
     start_gen = datetime.now()
     print(f"Началась генерация очереди событий в {start_gen}")
+
+    occurrence_time = start_gen
+    math_expect_s = (10 ** 3) // rps_select
+    math_expect_d = (10 ** 3) // rps_get_data
+
     while count_first > 0 or count_second > 0:
+        if (count_first+count_second)%10 == 0:
+            print(f"Осталось заполнить {count_first+count_second} элементов...")
+        ev = Event(status=EventStatus.new_s)
         bool_tmp = random.choice([True, False])
 
         if bool_tmp and count_first != 0:
             count_first -= 1
-            gen_queue.put(EventStatus.new_s)
+            ev.status = EventStatus.new_s
+            occurrence_time += timedelta(microseconds=random.randint(math_expect_s * 1000, (math_expect_s + 1) * 1000))
 
         elif not bool_tmp and count_second != 0:
             count_second -= 1
-            gen_queue.put(EventStatus.new_d)
+            ev.status = EventStatus.new_d
+            occurrence_time += timedelta(microseconds=random.randint(math_expect_d * 1000, (math_expect_d + 1) * 1000))
+
+        ev.occurrence_time = occurrence_time
+        gen_queue.put(ev)
+        #print(f"{ev.status}\t{ev.occurrence_time}")
     print(f"Генерация очереди завершилась за {(datetime.now() - start_gen).seconds} секунд(-ы).\n")
     return gen_queue
 
@@ -118,9 +134,10 @@ if __name__ == "__main__":
     print(f"!====Сводка====!")
     print(f"Обработчиков заявок первого типа: {count_handler_select}\n"
           f"Обработчиков заявок второго типа: {count_handler_get_data}\n\n"
-          f"Было обработано " + '{0:,}'.format(size_select + size_data).replace(',', ' ') + f" заявок.\n"
-          "Было потеряно " + '{0:,}'.format(count_lost_order).replace(',', ' ') +
+          f"Было обработано "+'{0:,}'.format(size_select+size_data).replace(',', ' ')+f" заявок.\n"
+          
+          f"Было потеряно "+'{0:,}'.format(count_lost_order).replace(',', ' ')+
           f" заявок => Значит надежность системы с такими параметрами равна "
-          f"{((1 - (count_lost_order / (size_select + size_data))) * 100):.3f}%.\n\n"
-          f"Моделирование заняло {(datetime.now() - start_time).seconds} секунд(-ы).")
+          f"{((1-(count_lost_order/(size_select+size_data)))*100):.3f}%.\n\n"
+          f"Моделирование заняло {(datetime.now()-start_time).seconds} секунд(-ы).")
     print(f"!====Сводка====!")
